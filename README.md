@@ -23,12 +23,29 @@ Each card shows its project, shortened chat title and live status. Multiple chat
 
 ## Supported hardware and software
 
-- ESP32-2432S028R, ESP-WROOM-32, ILI9341 320Ã—240 display, XPT2046 resistive touch, 4 MB flash.
+- ESP32-2432S028R, ESP-WROOM-32, ILI9341 320 x 240 display, XPT2046 resistive touch, 4 MB flash.
 - Windows 11 with Codex desktop. Local chats only; remote/cloud chats are not supported.
 - Python 3.11+ and PlatformIO Core. A USB data cable is required.
 - Bluetooth is optional for the Actions and Navigate tabs. Agent cards use USB, independent of unnamed Micro Bluetooth slots.
 
 Boards with ST7789 displays or ESP32-S3 processors need different firmware. Check your board before flashing. The tested display needs `TFT_RGB_ORDER=TFT_RGB`; other ILI9341 batches may use BGR.
+
+## macOS support: help wanted
+
+The USB dashboard helper currently supports Windows only. A macOS version still needs to be built and tested; the existing helper should not be treated as Mac-compatible.
+
+We do not currently have a Mac available for development or device testing. Contributions from someone with a Mac running Codex desktop and a supported CYD are welcome.
+
+The port needs to:
+
+- Investigate and implement the macOS connection for live Codex chat status; the current Windows named-pipe transport cannot be reused unchanged.
+- Verify the local chat/project database location and schema on macOS.
+- Support selecting Mac USB serial ports and reconnecting to the identified CYD.
+- Open the exact selected Codex chat using a macOS URL-opening mechanism.
+- Provide Mac setup instructions and a background helper launcher.
+- Test Working, Needs you, Done, Idle, disconnect recovery, paging and exact-chat taps on real hardware; assess optional BLE Actions and Navigate separately.
+
+The goal is to reuse the existing CYD firmware, card layout and USB protocol where possible. Any required firmware changes must be identified through testing. This is a desktop Mac helper project, not an iPhone or iPad app. Please open a GitHub issue to coordinate investigation and share your macOS, Codex desktop and board versions. Do not attach private chat databases, message content or device backups.
 
 ## Install
 
