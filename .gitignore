@@ -1,0 +1,12 @@
+.local/
+.venv/
+.pio/
+.pio-core/
+build/
+dist/
+__pycache__/
+*.pyc
+*.obj
+*.pdb
+.env*
+installation-record.json
