@@ -705,7 +705,7 @@ void DeviceUi::drawAgent(std::uint8_t index) {
   const bool pressed = actionIsPressed(InputKind::AgentKey, index);
   const std::uint16_t color = readableStatusColor(status);
   // Deep status fills keep white text legible across the whole button.
-  static constexpr std::uint16_t fills[] = {0x18E4, 0x18E4, 0x0A50, 0x11E6, 0x72A0, 0x7805};
+  static constexpr std::uint16_t fills[] = {0x18E4, 0x18E4, 0x0A50, 0x03E3, 0x72A0, 0x7805};
   const std::uint16_t base = usbFresh_ ? fills[static_cast<unsigned>(status)] : fills[0];
   const std::uint16_t background = pressed ? display_.alphaBlend(70, 0xFFFF, base) : base;
   target.fillRoundRect(x, y, 150, 51, 7, background);

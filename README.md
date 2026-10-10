@@ -14,7 +14,7 @@ Each card shows its project, shortened chat title and live status. Multiple chat
 | --- | --- |
 | Blue - Working | Chat is actively running |
 | Amber - Needs you | Waiting for your input or approval |
-| Dark green - Done | Finished with an unread result |
+| Green - Done | Finished with an unread result |
 | Gray - Idle | Not running |
 | Red - Error | Runtime system error |
 | Gray - Unknown | No fresh live status available |
