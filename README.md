@@ -12,12 +12,12 @@ Each card shows its project, shortened chat title and live status. Multiple chat
 
 | Card | Meaning |
 | --- | --- |
-| Blue Â· Working | Chat is actively running |
-| Amber Â· Needs you | Waiting for your input or approval |
-| Dark green Â· Done | Finished with an unread result |
-| Gray Â· Idle | Not running |
-| Red Â· Error | Runtime system error |
-| Gray Â· Unknown | No fresh live status available |
+| Blue - Working | Chat is actively running |
+| Amber - Needs you | Waiting for your input or approval |
+| Dark green - Done | Finished with an unread result |
+| Gray - Idle | Not running |
+| Red - Error | Runtime system error |
+| Gray - Unknown | No fresh live status available |
 
 ![Separate chats](docs/media/separate-chats.png)
 
