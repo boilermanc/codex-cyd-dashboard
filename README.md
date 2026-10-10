@@ -1,5 +1,7 @@
 # Codex CYD Dashboard
 
+[![Test and build](https://github.com/boilermanc/codex-cyd-dashboard/actions/workflows/ci.yml/badge.svg)](https://github.com/boilermanc/codex-cyd-dashboard/actions/workflows/ci.yml)
+
 A touchscreen view of your local Codex chats on an ESP32 Cheap Yellow Display. Built by [Sweetwater Technology](https://sweetwater.technology/resources/).
 
 ![Dashboard overview](docs/media/dashboard-overview.png)
