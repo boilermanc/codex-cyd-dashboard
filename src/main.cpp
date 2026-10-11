@@ -266,21 +266,25 @@ void loop() {
   codex.poll();
 
   CodexMicroState state = codex.snapshot();
-  const bool fresh = usbCards.fresh(millis());
-  if (state.dirty || state.connected != lastConnected || usbChanged || fresh != lastUsbFresh) {
+  const auto frameNow = millis();
+  const bool fresh = usbCards.fresh(frameNow);
+  static std::uint32_t lastAgeDraw = 0;
+  const bool ageTick = frameNow - lastAgeDraw >= 1000U;
+  if (state.dirty || state.connected != lastConnected || usbChanged || fresh != lastUsbFresh || ageTick) {
+    if (ageTick) lastAgeDraw = frameNow;
     lastConnected = state.connected;
     lastUsbFresh = fresh;
     usbChanged = false;
     static constexpr std::uint32_t colors[] = {0, 0xFFFFFF, 0x3388FF, 0x44DD55, 0xFFCC33, 0xFF3333};
     for (unsigned i = 0; i < 6; ++i) {
-      state.threads[i].color = fresh ? colors[usbCards.cards[i].status] : 0;
-      state.threads[i].brightness = fresh && usbCards.cards[i].status ? 1.0F : 0.0F;
+      state.threads[i].color = !usbCards.stale(i, frameNow) ? colors[usbCards.cards[i].status] : 0;
+      state.threads[i].brightness = !usbCards.stale(i, frameNow) && usbCards.cards[i].status ? 1.0F : 0.0F;
       state.threads[i].effect = "solid";
     }
     // USB is the agent display authority; BLE still carries Actions/Navigate.
     state.displayAwake = true;
     state.lightingBrightness = 1.0F;
-    ui.setUsbCards(usbCards, fresh);
+    ui.setUsbCards(usbCards, fresh, frameNow);
     ui.setState(state, millis());
   }
   ui.tick(millis());

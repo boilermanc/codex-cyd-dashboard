@@ -477,20 +477,28 @@ void DeviceUi::setBacklight(float brightness, bool awake) {
   Serial.printf("UI backlight duty=%u\n", static_cast<unsigned>(duty));
 }
 
-void DeviceUi::setUsbCards(const UsbCards& cards, bool fresh) {
+void DeviceUi::setUsbCards(const UsbCards& cards, bool fresh, std::uint32_t now) {
+  const int age = cards.received ? static_cast<int>((now - cards.lastFrame) / 1000U) : -1;
+  const bool ageChanged = usbAge_ != age;
+  usbAge_ = age;
   const bool connectionChanged = usbFresh_ != fresh;
   const bool pageChanged = usbPage_ != cards.page || usbPages_ != cards.pages;
   usbPage_ = cards.page;
   usbPages_ = cards.pages;
   usbFresh_ = fresh;
   for (unsigned i = 0; i < 6; ++i) {
-    const bool changed = connectionChanged || strcmp(usbCards_[i].title, cards.cards[i].title) != 0 ||
+    const int cardAge = cards.ageSeconds(i, now);
+    const bool stale = cards.stale(i, now);
+    const bool changed = connectionChanged || cardStale_[i] != stale ||
+                         (stale && cardAge_[i] != cardAge) || strcmp(usbCards_[i].title, cards.cards[i].title) != 0 ||
                          strcmp(usbCards_[i].id, cards.cards[i].id) != 0 ||
                          strcmp(usbCards_[i].subtitle, cards.cards[i].subtitle) != 0;
     usbCards_[i] = cards.cards[i];
+    cardAge_[i] = cardAge;
+    cardStale_[i] = stale;
     if (changed && displayAwake_ && page_ == Page::Agents) drawAgent(i);
   }
-  if (connectionChanged && displayAwake_) drawConnection();
+  if ((connectionChanged || ageChanged) && displayAwake_) drawConnection();
   if (pageChanged && displayAwake_) drawHeader();
 }
 
@@ -632,6 +640,7 @@ void DeviceUi::drawHeader() {
 }
 
 void DeviceUi::drawNotification() {
+  if (page_ == Page::Agents) return;
   display_.fillRect(178, 0, 100, sleep_menu::kVisibleTop, kPanel);
 
   if (notificationAgent_ >= 0) {
@@ -648,10 +657,17 @@ void DeviceUi::drawNotification() {
 }
 
 void DeviceUi::drawConnection() {
-  display_.fillRect(280, 0, 40, sleep_menu::kVisibleTop, kPanel);
-  display_.setTextDatum(TL_DATUM);
+  const int left = page_ == Page::Agents ? 178 : 280;
+  display_.fillRect(left, 0, 320-left, sleep_menu::kVisibleTop, kPanel);
+  display_.setTextDatum(TR_DATUM);
   display_.setTextColor(usbFresh_ ? 0x07E0 : 0xF800, kPanel);
-  display_.drawString("USB", 285, 7, 2);
+  char label[24];
+  if (page_ != Page::Agents) snprintf(label, sizeof(label), "USB");
+  else if (usbAge_ < 0) snprintf(label, sizeof(label), "USB waiting");
+  else if (usbAge_ < 60) snprintf(label, sizeof(label), "USB %ds ago", usbAge_);
+  else if (usbAge_ < 3600) snprintf(label, sizeof(label), "USB %dm ago", usbAge_/60);
+  else snprintf(label, sizeof(label), "USB %dh ago", usbAge_/3600);
+  display_.drawString(label, 316, 7, 2);
 }
 
 void DeviceUi::drawTabs() {
@@ -701,7 +717,7 @@ void DeviceUi::drawAgent(std::uint8_t index) {
   const int x = agentBuffered_ ? 0 : screenX;
   const int y = agentBuffered_ ? 0 : screenY;
   if (agentBuffered_) agentSprite_.fillSprite(kBackground);
-  const auto status = statuses_[index];
+  const auto status = cardStale_[index] ? StatusKind::Unassigned : statuses_[index];
   const bool pressed = actionIsPressed(InputKind::AgentKey, index);
   const std::uint16_t color = readableStatusColor(status);
   // Deep status fills keep white text legible across the whole button.
@@ -725,7 +741,13 @@ void DeviceUi::drawAgent(std::uint8_t index) {
   }
   smoothText(target, subtitle.c_str(), x + 10, y + 18, micro_font_detail, kText, background);
   target.fillCircle(x + 14, y + 41, 3, color);
-  const char* label = !usbFresh_ ? "Offline" : !usbCards_[index].id[0] ? "No chat" : labels[static_cast<unsigned>(status)];
+  char staleLabel[24];
+  const int age = cardAge_[index];
+  if (age < 0) snprintf(staleLabel, sizeof(staleLabel), "Stale");
+  else if (age < 60) snprintf(staleLabel, sizeof(staleLabel), "Stale %ds", age);
+  else if (age < 3600) snprintf(staleLabel, sizeof(staleLabel), "Stale %dm", age/60);
+  else snprintf(staleLabel, sizeof(staleLabel), "Stale %dh", age/3600);
+  const char* label = !usbCards_[index].id[0] ? "No chat" : cardStale_[index] ? staleLabel : labels[static_cast<unsigned>(status)];
   smoothText(target, label, x + 23, y + 32,
              micro_font_detail, kText, background);
   if (agentBuffered_) agentSprite_.pushSprite(screenX, screenY);
