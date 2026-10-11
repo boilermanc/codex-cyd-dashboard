@@ -148,6 +148,7 @@ def apply_metadata_patches(state, patches):
 class LiveStates:
     def __init__(self):
         self.states = {}
+        self.last_seen = {}
 
     def receive(self, message, now):
         if message.get("method") == "client-status-changed":
@@ -180,13 +181,20 @@ class LiveStates:
             except (KeyError, IndexError, TypeError, ValueError):
                 self.states.pop(thread_id, None)
 
+        if thread_id in self.states:
+            self.last_seen[thread_id] = self.states[thread_id][2]
+
     def cards(self, chats, now):
         result = []
         for chat in chats:
             name = short_name(chat)
             live = self.states.get(chat["id"])
             status = status_for(live[0]) if live and now - live[2] < 12 else 0
-            result.append({"id": chat["id"], "title": name, "subtitle": short_chat_title(chat), "status": status})
+            seen = live[2] if live else self.last_seen.get(chat["id"])
+            age = min(86400, max(0, int(now - seen))) if seen is not None else -1
+            stale = seen is not None and (not live or now - seen >= 12)
+            result.append({"id": chat["id"], "title": name, "subtitle": short_chat_title(chat),
+                           "status": status, "age": age, "stale": bool(stale)})
         return result + [{"id": "", "title": "No chat", "subtitle": "", "status": 0}] * (6 - len(result))
 
     def chat_page(self, chats, now, page):

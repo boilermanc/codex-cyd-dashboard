@@ -23,7 +23,7 @@ class DeviceUi {
   void setDisplayAwake(bool awake);
   bool displayAwake() const { return displayAwake_; }
   void setState(const CodexMicroState& state, std::uint32_t now);
-  void setUsbCards(const UsbCards& cards, bool fresh);
+  void setUsbCards(const UsbCards& cards, bool fresh, std::uint32_t now);
   void setPage(Page page);
   void toggleRotation();
   Page page() const { return page_; }
@@ -101,6 +101,9 @@ class DeviceUi {
   CodexMicroState state_;
   std::array<UsbCard, 6> usbCards_{};
   bool usbFresh_ = false;
+  int usbAge_ = -1;
+  std::array<int, 6> cardAge_{{-1,-1,-1,-1,-1,-1}};
+  std::array<bool, 6> cardStale_{};
   unsigned usbPage_ = 1;
   unsigned usbPages_ = 1;
   std::array<StatusKind, 6> statuses_{};

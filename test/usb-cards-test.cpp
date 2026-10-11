@@ -36,5 +36,30 @@ int main() {
   frame.replace(frame.find("\"page\":2"), 8, "\"page\":0");
   assert(!paged.accept(frame.c_str(), 200));
   assert(paged.page == 2 && paged.lastFrame == 100);
+  // Transport heartbeat must not renew an old desktop snapshot.
+  UsbCards aged;
+  auto ageFrame = valid;
+  ageFrame.insert(ageFrame.find("\"status\":2"), "\"age\":11,\"stale\":false,");
+  assert(aged.accept(ageFrame.c_str(), 100));
+  assert(aged.ageSeconds(0, 100) == 11);
+  assert(!aged.stale(0, 1099));
+  assert(aged.stale(0, 1100));
+  assert(aged.fresh(1100));
+  auto expired = ageFrame;
+  expired.replace(expired.find("\"age\":11"), 8, "\"age\":20");
+  assert(aged.accept(expired.c_str(), 2000));
+  assert(aged.stale(0, 2000));
+  auto renewed = ageFrame;
+  renewed.replace(renewed.find("\"age\":11"), 8, "\"age\":0");
+  assert(aged.accept(renewed.c_str(), 3000));
+  assert(!aged.stale(0, 3000));
+  assert(aged.stale(0, 11000));
+  assert(aged.ageSeconds(0, 11000) == 8);
+  auto invalidAge = renewed;
+  invalidAge.replace(invalidAge.find("\"age\":0"), 7, "\"age\":-2");
+  assert(!aged.accept(invalidAge.c_str(), 4000));
+  assert(aged.lastFrame == 3000);
+  assert(aged.accept(renewed.c_str(), 0xFFFFFF00U));
+  assert(aged.ageSeconds(0, 0x00000300U) == 1);
   std::cout << "USB frame validation, atomicity, duplicate IDs and expiry passed\n";
 }

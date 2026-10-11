@@ -9,6 +9,8 @@ struct UsbCard {
   char title[49] = "Waiting for USB";
   char subtitle[49] = {};
   std::uint8_t status = 0;
+  int age = -1;
+  bool stale = false;
 };
 
 // Complete frames are validated before replacing any visible card. Each tap
@@ -22,6 +24,14 @@ class UsbCards {
   unsigned page = 1;
   unsigned pages = 1;
   bool fresh(std::uint32_t now) const { return received && now - lastFrame < 8000U; }
+  int ageSeconds(unsigned index, std::uint32_t now) const {
+    if (!received || cards[index].age < 0) return -1;
+    const auto age = static_cast<unsigned>(cards[index].age) + (now - lastFrame) / 1000U;
+    return age > 86400U ? 86400 : static_cast<int>(age);
+  }
+  bool stale(unsigned index, std::uint32_t now) const {
+    return !fresh(now) || cards[index].stale || ageSeconds(index, now) >= 12;
+  }
   static bool identifier(const char* s, unsigned length, bool hyphens) {
     if (!s || std::strlen(s) != length) return false;
     for (unsigned i = 0; i < length; ++i) {
@@ -55,6 +65,11 @@ class UsbCards {
       std::strcpy(next[i].title, title);
       std::strcpy(next[i].subtitle, subtitle);
       next[i].status = incoming[i]["status"];
+      if (incoming[i].containsKey("age") && (!incoming[i]["age"].is<int>() ||
+          incoming[i]["age"].as<int>() < -1 || incoming[i]["age"].as<int>() > 86400)) return false;
+      if (incoming[i].containsKey("stale") && !incoming[i]["stale"].is<bool>()) return false;
+      next[i].age = incoming[i]["age"] | -1;
+      next[i].stale = incoming[i]["stale"] | false;
     }
     cards = next;
     page = nextPage;

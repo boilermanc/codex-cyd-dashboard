@@ -148,5 +148,24 @@ class UsbHelperTests(unittest.TestCase):
             self.assertEqual(events[-1], "stop")
 
 
+    def test_snapshot_age_survives_disconnect_until_fresh_snapshot(self):
+        live = helper.LiveStates()
+        chat = {"id": ID, "cwd": "repo", "title": "Example"}
+        snapshot = {"method": "thread-stream-state-changed", "sourceClientId": "owner",
+            "params": {"hostId": "local", "conversationId": ID, "change": {
+                "type": "snapshot", "revision": 1,
+                "conversationState": {"threadRuntimeStatus": {"type": "active"}}}}}
+        live.receive(snapshot, 100)
+        self.assertFalse(live.cards([chat], 111)[0]["stale"])
+        card = live.cards([chat], 112)[0]
+        self.assertEqual((card["age"], card["stale"], card["status"]), (12, True, 0))
+        live.receive({"method": "client-status-changed", "params": {
+            "status": "disconnected", "clientId": "owner"}}, 113)
+        self.assertEqual(live.cards([chat], 114)[0]["age"], 14)
+        self.assertTrue(live.cards([chat], 114)[0]["stale"])
+        live.receive(snapshot, 115)
+        card = live.cards([chat], 115)[0]
+        self.assertEqual((card["age"], card["stale"], card["status"]), (0, False, 2))
+
 if __name__ == "__main__":
     unittest.main()

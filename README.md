@@ -49,7 +49,7 @@ The goal is to reuse the existing CYD firmware, card layout and USB protocol whe
 
 ## Get the latest version
 
-Download the source ZIP from [the latest release](https://github.com/boilermanc/codex-cyd-dashboard/releases/latest), or update your clean clone from `main`. Existing users: stop the helper, run `git pull --ff-only`, then restart `Start-USB-Helper.ps1` with your usual port and optional device ID. If you have local edits, preserve them before updating. ZIP users should extract into a new folder and follow the Python environment setup below. The diagnostics update changes the Windows helper only; an existing compatible dashboard does not need reflashing.
+Download the source ZIP from [the latest release](https://github.com/boilermanc/codex-cyd-dashboard/releases/latest), or update your clean clone from `main`. Existing users: stop the helper, run `git pull --ff-only`, then restart `Start-USB-Helper.ps1` with your usual port and optional device ID. If you have local edits, preserve them before updating. ZIP users should extract into a new folder and follow the Python environment setup below. Version 0.2.0 adds visible stale-status age and requires updating both the helper and firmware: stop the helper, update the source, build and flash the intended CYD using the installation steps below, then restart the helper. The earlier v0.1.0 diagnostics-only update did not require reflashing.
 
 ## Install
 
@@ -126,3 +126,7 @@ Firmware and helper: MIT, preserving upstream notices in [LICENSE](LICENSE) and 
 The helper records bounded local events in `.local/usb-helper-events.jsonl` (1 MB plus two rotated backups). Events include USB verification/ACK and desktop connection transitions, loop delays, heartbeat, and sanitized exception classes/OS codes. Chat text, names and identifiers are excluded. Launchers retain timestamped stdout/stderr files across restarts; inspect these locally before sharing.
 
 Temporary database and health-report file errors are retried. Unexpected Python exceptions restart the runtime after two seconds; normal stop and finite test runs do not restart. This does not restart an externally killed process or resolve a blocked desktop pipe. A missing heartbeat with a running process suggests a stalled loop. Holding a touchscreen contact can currently interrupt accepted firmware updates. These are diagnostic leads, not a confirmed cause of past disconnects.
+
+## Visible status age
+
+The Agents header shows the age of the last accepted USB frame. Cards turn gray and display `Stale 12s` (then minutes/hours) when their desktop status is 12 seconds old, or immediately when the helper knows its source disconnected. Loss of USB updates for 8 seconds also makes cards stale; the clock continues on the board while the desktop sleeps. Only fresh desktop state restores a live status color. Older helpers still support the USB timeout, but per-chat age requires the updated helper and firmware together. Empty cards show No chat; an unseen chat shows Unknown.
