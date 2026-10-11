@@ -70,9 +70,9 @@ class DesktopListener:
                 messages.append(message)
         return messages
 
-    def close(self):
+    def close(self, notify=True):
         try:
-            for thread_id in self.following:
+            for thread_id in self.following if notify else ():
                 self.follow(thread_id, False)
         except (OSError, ConnectionError):
             pass
@@ -82,7 +82,7 @@ class DesktopListener:
 
 def recent_local_chats(database, limit=6):
     """Local candidates only; deliberately excludes internal review/subagent chats."""
-    connection = sqlite3.connect(database.resolve().as_uri() + "?mode=ro", uri=True)
+    connection = sqlite3.connect(database.resolve().as_uri() + "?mode=ro", uri=True, timeout=0.25)
     connection.row_factory = sqlite3.Row
     try:
         rows = connection.execute("""

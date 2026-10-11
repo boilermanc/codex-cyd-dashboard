@@ -16,8 +16,11 @@ if (-not (Test-Path -LiteralPath $python)) { throw 'Create .venv and install req
 if ($Port -notmatch '^COM[0-9]+$') { throw 'Port must be a Windows COM port.' }
 if ($DeviceId -and $DeviceId -notmatch '^[a-fA-F0-9]{12}$') { throw 'DeviceId must be 12 hex digits.' }
 $helperPath = Join-Path $taskRoot 'scripts/usb-helper.py'
+$runStamp = Get-Date -Format 'yyyyMMdd-HHmmss-fff'
+$runLog = Join-Path $taskRoot ('.local/usb-helper-' + $runStamp + '.log')
+$runError = Join-Path $taskRoot ('.local/usb-helper-' + $runStamp + '-error.log')
 $arguments = @('-u', ('"' + $helperPath + '"'), '--port', $Port)
 if ($DeviceId) { $arguments += @('--device-id', $DeviceId) }
-$process = Start-Process -FilePath $python -ArgumentList $arguments -WorkingDirectory $taskRoot -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $localPath 'usb-helper.log') -RedirectStandardError (Join-Path $localPath 'usb-helper-error.log')
+$process = Start-Process -FilePath $python -ArgumentList $arguments -WorkingDirectory $taskRoot -WindowStyle Hidden -PassThru -RedirectStandardOutput $runLog -RedirectStandardError $runError
 Set-Content -LiteralPath $pidFile -Value $process.Id
 Write-Output "USB helper started (PID $($process.Id))."

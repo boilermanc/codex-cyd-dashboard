@@ -47,6 +47,10 @@ The port needs to:
 
 The goal is to reuse the existing CYD firmware, card layout and USB protocol where possible. Any required firmware changes must be identified through testing. This is a desktop Mac helper project, not an iPhone or iPad app. Please open a GitHub issue to coordinate investigation and share your macOS, Codex desktop and board versions. Do not attach private chat databases, message content or device backups.
 
+## Get the latest version
+
+Download the source ZIP from [the latest release](https://github.com/boilermanc/codex-cyd-dashboard/releases/latest), or update your clean clone from `main`. Existing users: stop the helper, run `git pull --ff-only`, then restart `Start-USB-Helper.ps1` with your usual port and optional device ID. If you have local edits, preserve them before updating. ZIP users should extract into a new folder and follow the Python environment setup below. The diagnostics update changes the Windows helper only; an existing compatible dashboard does not need reflashing.
+
 ## Install
 
 1. Clone this repository and open PowerShell in its folder.
@@ -116,3 +120,9 @@ C++ host tests need a C++17 compiler and CMake. Font regeneration additionally n
 ## License and credits
 
 Firmware and helper: MIT, preserving upstream notices in [LICENSE](LICENSE) and [NOTICE.md](NOTICE.md). Font: SIL Open Font License in `assets/fonts/OFL.txt`. Sweetwater branding remains owned by Sweetwater Technology. Demo music was synthesized locally for this project. This project is not endorsed by OpenAI, Work Louder or Espressif.
+
+## Connection diagnostics
+
+The helper records bounded local events in `.local/usb-helper-events.jsonl` (1 MB plus two rotated backups). Events include USB verification/ACK and desktop connection transitions, loop delays, heartbeat, and sanitized exception classes/OS codes. Chat text, names and identifiers are excluded. Launchers retain timestamped stdout/stderr files across restarts; inspect these locally before sharing.
+
+Temporary database and health-report file errors are retried. Unexpected Python exceptions restart the runtime after two seconds; normal stop and finite test runs do not restart. This does not restart an externally killed process or resolve a blocked desktop pipe. A missing heartbeat with a running process suggests a stalled loop. Holding a touchscreen contact can currently interrupt accepted firmware updates. These are diagnostic leads, not a confirmed cause of past disconnects.

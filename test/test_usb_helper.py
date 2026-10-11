@@ -2,6 +2,8 @@ import importlib.util
 from pathlib import Path
 import unittest
 import json
+import tempfile
+from unittest import mock
 
 spec = importlib.util.spec_from_file_location("helper", Path(__file__).resolve().parents[1] / "scripts/usb-helper.py")
 helper = importlib.util.module_from_spec(spec)
@@ -116,6 +118,34 @@ class UsbHelperTests(unittest.TestCase):
         self.assertEqual(len(helper.watch_candidates(chats)), 70)
         self.assertEqual(helper.short_name({"cwd": "example", "title": "chat"}), "example")
         self.assertEqual(helper.short_name({"cwd": "another-project", "title": "chat"}), "another-project")
+
+
+    def test_transient_database_and_report_errors_do_not_end_loop(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fake_script = Path(directory) / "scripts/usb-helper.py"
+            (Path(directory) / ".local").mkdir()
+            args = type("Args", (), dict(dry_run=True, port=None, device_id=None,
+                       seconds=0, codex_home=Path(directory)))()
+            sink = mock.Mock()
+            sleeps = []
+            def advance(_):
+                sleeps.append(1)
+                if len(sleeps) >= 4:
+                    (Path(directory) / ".local/usb-helper.stop").touch()
+            with mock.patch.object(helper, "__file__", str(fake_script)), \
+                 mock.patch.object(helper.argparse.ArgumentParser, "parse_args", return_value=args), \
+                 mock.patch.object(helper, "Diagnostics", return_value=sink), \
+                 mock.patch.object(helper.probe, "recent_local_chats", side_effect=helper.sqlite3.OperationalError("private path")) as read, \
+                 mock.patch.object(helper.probe, "DesktopListener", side_effect=OSError("private pipe")), \
+                 mock.patch.object(helper.time, "monotonic", side_effect=lambda: 100 + len(sleeps)*3), \
+                 mock.patch.object(helper.time, "sleep", side_effect=advance), \
+                 mock.patch.object(Path, "write_text", side_effect=OSError("private report")):
+                helper.main()
+            self.assertGreaterEqual(read.call_count, 2)
+            events = [call.args[0] for call in sink.event.call_args_list]
+            self.assertIn("database_error", events)
+            self.assertIn("report_error", events)
+            self.assertEqual(events[-1], "stop")
 
 
 if __name__ == "__main__":

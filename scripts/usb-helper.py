@@ -6,9 +6,16 @@ import json
 import os
 from pathlib import Path
 import re
+import sqlite3
+import sys
 import time
 import unicodedata
 import uuid
+
+diagnostic_spec = importlib.util.spec_from_file_location("cyd_diagnostics", Path(__file__).with_name("helper_diagnostics.py"))
+diagnostic_module = importlib.util.module_from_spec(diagnostic_spec)
+diagnostic_spec.loader.exec_module(diagnostic_module)
+Diagnostics = diagnostic_module.Diagnostics
 
 spec = importlib.util.spec_from_file_location("cyd_probe", Path(__file__).with_name("probe-chat-connection.py"))
 probe = importlib.util.module_from_spec(spec)
@@ -229,6 +236,8 @@ def main():
     (root / ".local").mkdir(exist_ok=True)
     stop = root / ".local/usb-helper.stop"
     report = root / (".local/usb-helper-dry-run.json" if args.dry_run else ".local/usb-helper-status.json")
+    diagnostics = Diagnostics(root)
+    diagnostics.event("start", pid=os.getpid())
     session = uuid.uuid4().hex
     live = LiveStates()
     listener = None
@@ -244,17 +253,27 @@ def main():
     page = 0
     last_page = 0
     started = time.monotonic()
+    previous_loop = started
+    last_heartbeat = started
     try:
         while not stop.exists() and (not args.seconds or time.monotonic() - started < args.seconds):
             now = time.monotonic()
+            gap = now - previous_loop
+            previous_loop = now
+            if gap > 3:
+                diagnostics.event("loop_gap", seconds=round(gap, 3))
             if now - last_read >= 2:
-                chats = probe.recent_local_chats(database, limit=-1)
+                try:
+                    chats = probe.recent_local_chats(database, limit=-1)
+                except (sqlite3.Error, OSError) as error:
+                    diagnostics.event("database_error", error=error)
                 last_read = now
             if listener is None:
                 try:
                     listener = probe.DesktopListener()
                     subscribed.clear()
-                except OSError:
+                except OSError as error:
+                    diagnostics.event("ipc_error", error=error)
                     time.sleep(1)
             if listener:
                 try:
@@ -277,10 +296,12 @@ def main():
                         # Keep cleanup bounded during a long-running session.
                         listener.following = list(wanted)
                         last_follow = now
-                except (OSError, ValueError, ConnectionError):
-                    listener.close()
+                except (OSError, ValueError, ConnectionError) as error:
+                    diagnostics.event("ipc_error", error=error)
+                    listener.close(notify=False)
                     listener = None
                     live.states.clear()
+            now = time.monotonic()
             cards, page, pages, chat_count = live.chat_page(chats, now, page)
             if not args.dry_run and port is None:
                 try:
@@ -293,7 +314,12 @@ def main():
                     port.rts = False
                     port.open()
                     device_verified = False
-                except (OSError, serial.SerialException):
+                    serial_buffer.clear()
+                    shown.clear()
+                    last_ack = last_send = last_hello = 0
+                    diagnostics.event("usb_open")
+                except (OSError, serial.SerialException) as error:
+                    diagnostics.event("usb_error", error=error)
                     if port:
                         port.close()
                     port = None
@@ -321,8 +347,11 @@ def main():
                                 cards, page, pages, chat_count = live.chat_page(chats, now, page)
                             thread_id = permitted_tap(line, session, shown, now)
                             if thread_id and now - last_open > .4:
-                                os.startfile("codex://threads/" + thread_id)
-                                last_open = now
+                                try:
+                                    os.startfile("codex://threads/" + thread_id)
+                                    last_open = now
+                                except OSError as error:
+                                    diagnostics.event("open_chat_error", error=error)
                     if device_verified and now - last_send >= 1:
                         data = json.dumps({"session": session, "cards": cards,
                                            "page": page + 1, "pages": pages}, separators=(",", ":"))
@@ -330,7 +359,8 @@ def main():
                         shown = {k: v for k, v in shown.items() if now - v < 10}
                         shown.update({c["id"]: now for c in cards if c["id"]})
                         last_send = now
-                except (OSError, serial.SerialException):
+                except (OSError, serial.SerialException) as error:
+                    diagnostics.event("usb_error", error=error)
                     port.close()
                     port = None
                     device_verified = False
@@ -341,19 +371,39 @@ def main():
                          "deviceVerified": device_verified, "acknowledged": bool(last_ack and now - last_ack < 5),
                          "cards": cards, "updatedAt": time.time()}
                 temp = report.with_suffix(".tmp")
-                temp.write_text(json.dumps(state, indent=2), encoding="utf-8")
                 try:
+                    temp.write_text(json.dumps(state, indent=2), encoding="utf-8")
                     temp.replace(report)
-                except PermissionError:
+                except OSError as error:
+                    diagnostics.event("report_error", error=error)
                     pass  # Retry next health update; Windows reader may hold the file.
                 main.last_report = now
+            diagnostics.transition("desktop_connected", bool(listener and listener.client_id))
+            diagnostics.transition("device_verified", device_verified)
+            diagnostics.transition("acknowledged", bool(last_ack and now - last_ack < 5))
+            diagnostics.transition("serial_open", bool(port))
+            if now - last_heartbeat >= 30:
+                diagnostics.event("heartbeat", seconds=round(now - started, 3))
+                last_heartbeat = now
             time.sleep(.03)
     finally:
+        diagnostics.event("stop", seconds=round(time.monotonic() - started, 3))
         if listener:
-            listener.close()
+            listener.close(notify=False)
         if port:
             port.close()
 
 
 if __name__ == "__main__":
-    main()
+    # Retry unexpected runtime failures, but respect normal stop and finite runs.
+    while True:
+        try:
+            main()
+            break
+        except Exception as error:
+            Diagnostics(Path(__file__).resolve().parents[1]).event("unexpected_exit", error=error)
+            if "--seconds" in sys.argv or "--dry-run" in sys.argv:
+                raise
+            if (Path(__file__).resolve().parents[1] / ".local/usb-helper.stop").exists():
+                break
+            time.sleep(2)
