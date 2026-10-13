@@ -49,7 +49,7 @@ The goal is to reuse the existing CYD firmware, card layout and USB protocol whe
 
 ## Get the latest version
 
-Download the source ZIP from [the latest release](https://github.com/boilermanc/codex-cyd-dashboard/releases/latest), or update your clean clone from `main`. Existing users: stop the helper, run `git pull --ff-only`, then restart `Start-USB-Helper.ps1` with your usual port and optional device ID. If you have local edits, preserve them before updating. ZIP users should extract into a new folder and follow the Python environment setup below. Version 0.2.0 adds visible stale-status age and requires updating both the helper and firmware: stop the helper, update the source, build and flash the intended CYD using the installation steps below, then restart the helper. The earlier v0.1.0 diagnostics-only update did not require reflashing.
+Download the source ZIP from [the latest release](https://github.com/boilermanc/codex-cyd-dashboard/releases/latest), or update your clean clone from `main`. Existing users: stop the helper, run `git pull --ff-only`, then restart `Start-USB-Helper.ps1` with your usual port and optional device ID. If you have local edits, preserve them before updating. ZIP users should extract into a new folder and follow the Python environment setup below. Version 0.2.1 adds optional Windows sign-in startup; see [release notes](docs/releases/v0.2.1.md). No firmware update is needed when upgrading from v0.2.0. Version 0.2.0 adds visible stale-status age and requires updating both the helper and firmware: stop the helper, update the source, build and flash the intended CYD using the installation steps below, then restart the helper. The earlier v0.1.0 diagnostics-only update did not require reflashing.
 
 ## Install
 
@@ -93,6 +93,24 @@ For foreground diagnostics:
 
 An optional `--device-id` (or launcher `-DeviceId`) pins the MAC-derived 12-digit identity reported by `CYD_HELLO`. The helper accepts protocol-v1 firmware on the explicitly selected port; it never scans or writes other ports. `--codex-home` overrides the local Codex data folder, defaulting to `CODEX_HOME` or `~/.codex`.
 
+## Start automatically after a restart
+
+After setting up the Python environment and verifying the correct CYD port, install a startup shortcut for your Windows account:
+
+```powershell
+.\Set-USB-HelperStartup.ps1 -Port COM11
+```
+
+Use your board's port, and optionally add `-DeviceId` with the same identity used by the manual launcher. No administrator access is needed. At your next Windows sign-in, the shortcut runs the existing launcher hidden in the background. Keep Codex desktop open for live chat status; the helper retries connections while the board or desktop is unavailable. Startup does not run before sign-in and does not restart a helper that crashes during the session.
+
+The checkout and its `.venv` must stay at the same path. Run the command again to change the port or device identity. Each checkout has its own shortcut: remove the old one before moving the folder or enabling another installation for the same board. `-WhatIf` previews installation or removal without making changes.
+
+```powershell
+.\Set-USB-HelperStartup.ps1 -Remove
+```
+
+Removal leaves the current helper running. Use `Stop-USB-Helper.ps1` to stop it now; stopping alone leaves automatic startup enabled for the next sign-in. Installing startup does not flash firmware or change Bluetooth pairing.
+
 ## Controls
 
 Agents: chat cards and paging. Actions: upstream BLE shortcuts for Fast, approval, rejection, fork, microphone and send. Navigate: BLE navigation/dial controls. Configure those bindings in Codex Micro settings after Bluetooth pairing. The helper never sends prompts or approvals. BOOT short-press rotates the display 180 degrees. BOOT long-press starts touch calibration. The current dashboard keeps the screen awake at full brightness.
@@ -109,6 +127,7 @@ Screenshots and video are labeled fictional sample UI, not photographs or captur
 
 ```powershell
 .\.venv\Scripts\python.exe -m unittest discover -s test -p "test_*.py"
+powershell -NoProfile -File test/test_startup.ps1
 pio run -e cyd
 cmake -S . -B build
 cmake --build build --config Release
