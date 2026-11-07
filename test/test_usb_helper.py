@@ -4,6 +4,7 @@ import unittest
 import json
 import tempfile
 from unittest import mock
+from types import SimpleNamespace
 
 spec = importlib.util.spec_from_file_location("helper", Path(__file__).resolve().parents[1] / "scripts/usb-helper.py")
 helper = importlib.util.module_from_spec(spec)
@@ -12,6 +13,24 @@ ID = "11111111-1111-4111-8111-111111111111"
 
 
 class UsbHelperTests(unittest.TestCase):
+    def test_port_recovery_requires_the_pinned_board(self):
+        ports = [SimpleNamespace(device=name, vid=vid, pid=pid)
+                 for name, vid, pid in [("COM1", None, None), ("COM4", 0x1A86, 0x7523),
+                                        ("COM9", 0x1A86, 0x7523), ("COM5", 0x1A86, 0x7523)]]
+        serial = mock.Mock()
+        other, target = mock.Mock(), mock.Mock()
+        other.read_until.return_value = b"CYD_USB_READY 1 000000000000\n"
+        target.read_until.return_value = b"CYD_USB_READY 1 123456abcdef\n"
+        serial.Serial.side_effect = [other, target]
+        stop = mock.Mock()
+        stop.exists.return_value = False
+        with mock.patch.object(helper.time, "monotonic", side_effect=[0, .1, .7, 1, 1.1]):
+            self.assertEqual(helper.find_pinned_board(serial, ports, "COM4", "123456abcdef", stop), "COM5")
+        self.assertEqual((other.port, target.port), ("COM9", "COM5"))
+        for port in (other, target):
+            port.write.assert_called_once_with(b"CYD_HELLO\n")
+            port.close.assert_called_once()
+
     def test_handshake_requires_protocol_and_optional_identity(self):
         self.assertTrue(helper.valid_handshake("CYD_USB_READY 1 123456abcdef"))
         self.assertTrue(helper.valid_handshake("CYD_USB_READY 1 123456abcdef", "123456abcdef"))

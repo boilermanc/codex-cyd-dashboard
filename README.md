@@ -91,7 +91,7 @@ For foreground diagnostics:
 .\.venv\Scripts\python.exe scripts/usb-helper.py --dry-run --seconds 20
 ```
 
-An optional `--device-id` (or launcher `-DeviceId`) pins the MAC-derived 12-digit identity reported by `CYD_HELLO`. The helper accepts protocol-v1 firmware on the explicitly selected port; it never scans or writes other ports. `--codex-home` overrides the local Codex data folder, defaulting to `CODEX_HOME` or `~/.codex`.
+An optional `--device-id` (or launcher `-DeviceId`) pins the MAC-derived 12-digit identity reported by `CYD_HELLO`. With an identity pin, the helper checks other CH340 ports for that board if it cannot verify the connection on the selected port. It sends dashboard data only after verifying the saved identity. Without a pin, it uses only the selected port. `--codex-home` overrides the local Codex data folder, defaulting to `CODEX_HOME` or `~/.codex`.
 
 ## Start automatically after a restart
 
