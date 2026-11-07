@@ -1,5 +1,6 @@
 """Local recent-chat dashboard over USB; never sends prompts or approvals."""
 import argparse
+from contextlib import closing
 import copy
 import importlib.util
 import json
@@ -224,8 +225,31 @@ def valid_handshake(line, device_id=None):
     return bool(match and (not device_id or match.group(1) == device_id))
 
 
+def find_pinned_board(serial, ports, current_port, device_id, stop):
+    for candidate in ports:
+        if stop.exists():
+            break
+        if candidate.device == current_port or (candidate.vid, candidate.pid) != (0x1A86, 0x7523):
+            continue
+        try:
+            with closing(serial.Serial(baudrate=115200, timeout=.1, write_timeout=.5)) as probe_port:
+                probe_port.port = candidate.device
+                probe_port.dtr = probe_port.rts = False
+                probe_port.open()
+                probe_port.write(b"CYD_HELLO\n")
+                deadline = time.monotonic() + .6
+                while time.monotonic() < deadline and not stop.exists():
+                    line = probe_port.read_until(b"\n", 256).decode("ascii", errors="replace").strip()
+                    if valid_handshake(line, device_id):
+                        return candidate.device
+        except OSError:
+            continue
+    return None
+
+
 def main():
     import serial
+    from serial.tools import list_ports
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", help="CYD serial port, e.g. COM11")
     parser.add_argument("--device-id", help="12 hex digits reported by CYD_HELLO; optional identity pin")
@@ -250,6 +274,7 @@ def main():
     live = LiveStates()
     listener = None
     port = None
+    active_port = args.port
     device_verified = False
     serial_buffer = bytearray()
     shown = {}
@@ -261,6 +286,7 @@ def main():
     page = 0
     last_page = 0
     started = time.monotonic()
+    next_scan = started + 6
     previous_loop = started
     last_heartbeat = started
     try:
@@ -311,10 +337,18 @@ def main():
                     live.states.clear()
             now = time.monotonic()
             cards, page, pages, chat_count = live.chat_page(chats, now, page)
+            if not args.dry_run and args.device_id and not device_verified and now >= next_scan:
+                replacement_port = find_pinned_board(serial, list_ports.comports(), active_port, args.device_id, stop)
+                next_scan = time.monotonic() + 5
+                if replacement_port:
+                    if port:
+                        port.close()
+                    port = None
+                    active_port = replacement_port
             if not args.dry_run and port is None:
                 try:
                     port = serial.Serial()
-                    port.port = args.port
+                    port.port = active_port
                     port.baudrate = 115200
                     port.timeout = 0
                     port.write_timeout = 1
@@ -372,6 +406,7 @@ def main():
                     port.close()
                     port = None
                     device_verified = False
+                    last_ack = 0
             if args.dry_run or now - getattr(main, "last_report", 0) >= 2:
                 state = {"mode": "local chats by status", "page": page + 1, "pages": pages,
                          "chatCount": chat_count, "watchedChats": len(subscribed),
