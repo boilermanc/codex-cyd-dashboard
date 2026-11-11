@@ -53,6 +53,8 @@ Download the source ZIP from [the latest release](https://github.com/boilermanc/
 
 ## Install
 
+The portable Windows download includes automatic worker recovery. Follow the [Windows helper setup guide](docs/WINDOWS-HELPER.md) to configure your board and enable recovery at sign-in.
+
 1. Clone this repository and open PowerShell in its folder.
 2. Create the helper environment:
 

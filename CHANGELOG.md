@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.3] - 2026-11-11
+
+- Reopen silent USB connections and require a verified identity before accepting acknowledgments.
+- Exit stalled helper workers so recovery can restart them.
+- Include a Windows worker supervisor, sign-in recovery task installer, and portable setup guide.
+- Record board startup and reset reasons when received.
+- Build and smoke-test the portable Windows download in CI.
+
+## [0.2.2] - 2026-11-07
+
+- Find the saved CYD on another CH340 port when Windows changes its COM assignment.
+
 ## [0.2.1] - 2026-10-13
 
 ### Added

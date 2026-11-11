@@ -15,6 +15,7 @@ class Diagnostics:
         "start", "stop", "unexpected_exit", "usb_open", "usb_error",
         "usb_ack_timeout", "ipc_connected", "ipc_error", "database_error",
         "report_error", "open_chat_error", "loop_gap", "heartbeat", "transition",
+        "helper_hang", "board_restart", "board_reset_reason",
     })
     TRANSITIONS = frozenset({
         "desktop_connected", "device_verified", "acknowledged", "serial_open",
@@ -22,7 +23,7 @@ class Diagnostics:
     NUMERIC_FIELDS = frozenset({
         "pid", "seconds", "duration_ms", "loop_gap_ms", "ack_age_ms", "send_age_ms",
         "ipc_age_ms", "attempt", "messages", "watched_chats", "chat_count",
-        "page", "pages", "errno", "winerror", "exit_code",
+        "page", "pages", "errno", "winerror", "exit_code", "reset_reason",
     })
     BOOLEAN_FIELDS = frozenset({"dry_run", "requested", "connected"})
 
