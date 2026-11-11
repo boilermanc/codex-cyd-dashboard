@@ -9,6 +9,7 @@ from pathlib import Path
 import re
 import sqlite3
 import sys
+import threading
 import time
 import unicodedata
 import uuid
@@ -24,6 +25,11 @@ spec.loader.exec_module(probe)
 
 ALIASES = {}
 FIELDS = {"threadRuntimeStatus", "hasUnreadTurn", "requests"}
+
+
+def runtime_root():
+    """Packaged helper keeps private reports outside its temporary executable bundle."""
+    return Path(os.environ.get("CROWES_NEST_DATA_DIR", str(Path(__file__).resolve().parents[1])))
 
 
 def project_key(chat):
@@ -247,6 +253,13 @@ def find_pinned_board(serial, ports, current_port, device_id, stop):
     return None
 
 
+def watch_progress(progress, finished, diagnostics):
+    while not finished.wait(5):
+        if time.monotonic() - progress[0] >= 45:
+            diagnostics.event("helper_hang")
+            os._exit(70)  # Windows recovery restarts a worker stuck in driver/IPC I/O.
+
+
 def main():
     import serial
     from serial.tools import list_ports
@@ -263,23 +276,29 @@ def main():
         parser.error("--device-id must contain exactly 12 hex digits")
     if args.device_id:
         args.device_id = args.device_id.lower()
-    root = Path(__file__).resolve().parents[1]
+    root = runtime_root()
     database = args.codex_home / "state_5.sqlite"
     (root / ".local").mkdir(exist_ok=True)
     stop = root / ".local/usb-helper.stop"
     report = root / (".local/usb-helper-dry-run.json" if args.dry_run else ".local/usb-helper-status.json")
     diagnostics = Diagnostics(root)
     diagnostics.event("start", pid=os.getpid())
+    progress = [time.monotonic()]
+    finished = threading.Event()
+    watchdog = threading.Thread(target=watch_progress, args=(progress, finished, Diagnostics(root)), daemon=True)
     session = uuid.uuid4().hex
     live = LiveStates()
     listener = None
     port = None
     active_port = args.port
     device_verified = False
+    detected_device_id = None
     serial_buffer = bytearray()
     shown = {}
     last_open = 0
     last_ack = 0
+    opened_at = 0
+    next_open = 0
     last_send = last_read = last_follow = last_hello = 0
     chats = []
     subscribed = set()
@@ -289,9 +308,11 @@ def main():
     next_scan = started + 6
     previous_loop = started
     last_heartbeat = started
+    watchdog.start()
     try:
         while not stop.exists() and (not args.seconds or time.monotonic() - started < args.seconds):
             now = time.monotonic()
+            progress[0] = now
             gap = now - previous_loop
             previous_loop = now
             if gap > 3:
@@ -345,7 +366,7 @@ def main():
                         port.close()
                     port = None
                     active_port = replacement_port
-            if not args.dry_run and port is None:
+            if not args.dry_run and port is None and now >= next_open:
                 try:
                     port = serial.Serial()
                     port.port = active_port
@@ -355,7 +376,9 @@ def main():
                     port.dtr = False
                     port.rts = False
                     port.open()
+                    opened_at = time.monotonic()
                     device_verified = False
+                    detected_device_id = None
                     serial_buffer.clear()
                     shown.clear()
                     last_ack = last_send = last_hello = 0
@@ -365,7 +388,10 @@ def main():
                     if port:
                         port.close()
                     port = None
-                    time.sleep(1)
+                    device_verified = False
+                    detected_device_id = None
+                    last_ack = 0
+                    next_open = time.monotonic() + 2
             if port:
                 try:
                     if now - last_hello >= 5:
@@ -378,9 +404,23 @@ def main():
                         line, _, rest = serial_buffer.partition(b"\n")
                         serial_buffer = bytearray(rest)
                         line = line.decode("ascii", errors="replace").strip()
-                        if valid_handshake(line, args.device_id):
-                            device_verified = True
-                        elif line == "CYD_ACK " + session:
+                        reset = re.search(r"rst:0x([0-9a-fA-F]+)", line)
+                        if reset:
+                            diagnostics.event("board_reset_reason", reset_reason=int(reset.group(1), 16))
+                        if line == "CODEX_CYD_READY":
+                            diagnostics.event("board_restart")
+                            device_verified = False
+                            detected_device_id = None
+                            last_ack = last_hello = 0
+                            opened_at = now
+                            shown.clear()
+                        elif valid_handshake(line):
+                            detected_device_id = line.rsplit(" ", 1)[1]
+                            device_verified = valid_handshake(line, args.device_id)
+                            if not device_verified:
+                                last_ack = 0
+                                shown.clear()
+                        elif device_verified and line == "CYD_ACK " + session:
                             last_ack = now
                         elif device_verified:
                             if line == "CYD_PAGE " + session and now - last_page > .4:
@@ -394,6 +434,9 @@ def main():
                                     last_open = now
                                 except OSError as error:
                                     diagnostics.event("open_chat_error", error=error)
+                    if now - max(last_ack, opened_at) >= 8:
+                        diagnostics.event("usb_ack_timeout")
+                        raise serial.SerialException("Board stopped responding")
                     if device_verified and now - last_send >= 1:
                         data = json.dumps({"session": session, "cards": cards,
                                            "page": page + 1, "pages": pages}, separators=(",", ":"))
@@ -406,11 +449,16 @@ def main():
                     port.close()
                     port = None
                     device_verified = False
+                    detected_device_id = None
                     last_ack = 0
+                    next_open = time.monotonic() + 2
             if args.dry_run or now - getattr(main, "last_report", 0) >= 2:
-                state = {"mode": "local chats by status", "page": page + 1, "pages": pages,
+                state = {"pid": os.getpid(), "mode": "local chats by status", "page": page + 1, "pages": pages,
                          "chatCount": chat_count, "watchedChats": len(subscribed),
                          "desktopConnected": bool(listener and listener.client_id),
+                         "port": active_port, "expectedDeviceId": args.device_id,
+                         "detectedDeviceId": detected_device_id,
+                         "deviceMismatch": bool(detected_device_id and args.device_id and detected_device_id != args.device_id),
                          "deviceVerified": device_verified, "acknowledged": bool(last_ack and now - last_ack < 5),
                          "cards": cards, "updatedAt": time.time()}
                 temp = report.with_suffix(".tmp")
@@ -430,11 +478,15 @@ def main():
                 last_heartbeat = now
             time.sleep(.03)
     finally:
-        diagnostics.event("stop", seconds=round(time.monotonic() - started, 3))
-        if listener:
-            listener.close(notify=False)
-        if port:
-            port.close()
+        try:
+            diagnostics.event("stop", seconds=round(time.monotonic() - started, 3))
+            if listener:
+                listener.close(notify=False)
+            if port:
+                port.close()
+        finally:
+            finished.set()
+            watchdog.join(timeout=1)
 
 
 if __name__ == "__main__":
@@ -444,9 +496,9 @@ if __name__ == "__main__":
             main()
             break
         except Exception as error:
-            Diagnostics(Path(__file__).resolve().parents[1]).event("unexpected_exit", error=error)
+            Diagnostics(runtime_root()).event("unexpected_exit", error=error)
             if "--seconds" in sys.argv or "--dry-run" in sys.argv:
                 raise
-            if (Path(__file__).resolve().parents[1] / ".local/usb-helper.stop").exists():
+            if (runtime_root() / ".local/usb-helper.stop").exists():
                 break
             time.sleep(2)

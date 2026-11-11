@@ -13,6 +13,54 @@ ID = "11111111-1111-4111-8111-111111111111"
 
 
 class UsbHelperTests(unittest.TestCase):
+    def test_silent_board_is_reopened_and_updates_resume(self):
+        import serial
+        with tempfile.TemporaryDirectory() as folder:
+            args = SimpleNamespace(dry_run=False, port="COM4", device_id="123456abcdef",
+                                   seconds=14, codex_home=Path(folder))
+            clock = [100.]
+            dead, recovered = mock.Mock(), mock.Mock()
+            dead.in_waiting = recovered.in_waiting = 1024
+            dead.read.return_value = b""
+            recovered.read.side_effect = lambda _: (
+                b"CYD_ACK testsession\n" if any(
+                    call.args[0].startswith(b"CYD1 ") for call in recovered.write.call_args_list
+                ) else b"CYD_USB_READY 1 123456abcdef\n")
+            sink = mock.Mock()
+            with mock.patch.object(helper, "runtime_root", return_value=Path(folder)), \
+                 mock.patch.object(helper.argparse.ArgumentParser, "parse_args", return_value=args), \
+                 mock.patch.object(helper, "Diagnostics", return_value=sink), \
+                 mock.patch.object(helper.threading, "Thread"), \
+                 mock.patch.object(helper.uuid, "uuid4", return_value=SimpleNamespace(hex="testsession")), \
+                 mock.patch.object(helper.probe, "recent_local_chats", return_value=[]), \
+                 mock.patch.object(helper.probe, "DesktopListener", side_effect=OSError()), \
+                 mock.patch.object(helper.time, "monotonic", side_effect=lambda: clock[0]), \
+                 mock.patch.object(helper.time, "sleep", side_effect=lambda seconds: clock.__setitem__(0, clock[0] + seconds)), \
+                 mock.patch.object(serial, "Serial", side_effect=[dead, recovered]), \
+                 mock.patch("serial.tools.list_ports.comports", return_value=[]):
+                helper.main()
+            self.assertIn("usb_ack_timeout", [call.args[0] for call in sink.event.call_args_list])
+            dead.close.assert_called_once()
+            recovered.open.assert_called_once()
+            report = json.loads((Path(folder) / ".local/usb-helper-status.json").read_text())
+            self.assertTrue(report["deviceVerified"])
+            self.assertTrue(report["acknowledged"])
+
+    def test_watchdog_exits_failed_worker_but_leaves_healthy_worker_running(self):
+        finished, sink = mock.Mock(), mock.Mock()
+        finished.wait.side_effect = [False, True]
+        with mock.patch.object(helper.time, "monotonic", return_value=144), \
+             mock.patch.object(helper.os, "_exit") as exit_worker:
+            helper.watch_progress([100], finished, sink)
+            exit_worker.assert_not_called()
+        finished.wait.side_effect = [False]
+        with mock.patch.object(helper.time, "monotonic", return_value=145), \
+             mock.patch.object(helper.os, "_exit", side_effect=RuntimeError("exit")) as exit_worker:
+            with self.assertRaises(RuntimeError):
+                helper.watch_progress([100], finished, sink)
+            exit_worker.assert_called_once_with(70)
+        sink.event.assert_called_once_with("helper_hang")
+
     def test_port_recovery_requires_the_pinned_board(self):
         ports = [SimpleNamespace(device=name, vid=vid, pid=pid)
                  for name, vid, pid in [("COM1", None, None), ("COM4", 0x1A86, 0x7523),
