@@ -156,6 +156,7 @@ class LiveStates:
     def __init__(self):
         self.states = {}
         self.last_seen = {}
+        self.last_status = {}
 
     def receive(self, message, now):
         if message.get("method") == "client-status-changed":
@@ -190,6 +191,12 @@ class LiveStates:
 
         if thread_id in self.states:
             self.last_seen[thread_id] = self.states[thread_id][2]
+            status = status_for(self.states[thread_id][0])
+            previous = self.last_status.get(thread_id)
+            self.last_status[thread_id] = status
+            # Repeated snapshots and reconnects must not interrupt manual paging.
+            return status in (2, 4) and status != previous
+        return False
 
     def cards(self, chats, now):
         result = []
@@ -333,7 +340,9 @@ def main():
             if listener:
                 try:
                     for message in listener.poll():
-                        live.receive(message, now)
+                        if live.receive(message, now):
+                            page = 0
+                            last_send = 0
                     if listener.client_id and now - last_follow >= 4:
                         visible, _, _, _ = live.chat_page(chats, now, page)
                         wanted = {c["id"] for c in watch_candidates(chats)}

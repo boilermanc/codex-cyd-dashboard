@@ -49,6 +49,8 @@ The goal is to reuse the existing CYD firmware, card layout and USB protocol whe
 
 ## Get the latest version
 
+Version **0.2.4** automatically returns the monitor to page 1 when a followed local chat enters **Working** or **Needs you**. Repeated updates in the same state leave manual paging alone. This is a helper-only update; no firmware flash or Bluetooth re-pairing is required. See the [release notes](docs/releases/v0.2.4.md).
+
 Download the source ZIP from [the latest release](https://github.com/boilermanc/codex-cyd-dashboard/releases/latest), or update your clean clone from `main`. Existing users: stop the helper, run `git pull --ff-only`, then restart `Start-USB-Helper.ps1` with your usual port and optional device ID. If you have local edits, preserve them before updating. ZIP users should extract into a new folder and follow the Python environment setup below. Version 0.2.1 adds optional Windows sign-in startup; see [release notes](docs/releases/v0.2.1.md). No firmware update is needed when upgrading from v0.2.0. Version 0.2.0 adds visible stale-status age and requires updating both the helper and firmware: stop the helper, update the source, build and flash the intended CYD using the installation steps below, then restart the helper. The earlier v0.1.0 diagnostics-only update did not require reflashing.
 
 ## Install
@@ -114,6 +116,8 @@ The checkout and its `.venv` must stay at the same path. Run the command again t
 Removal leaves the current helper running. Use `Stop-USB-Helper.ps1` to stop it now; stopping alone leaves automatic startup enabled for the next sign-in. Installing startup does not flash firmware or change Bluetooth pairing.
 
 ## Controls
+
+Page 1 prioritizes Needs you, then Working. The helper returns there when a chat newly enters either state, including when first discovered in that state. You can browse other pages until the next such transition. If more than six chats have priority status, the rest remain on subsequent pages.
 
 Agents: chat cards and paging. Actions: upstream BLE shortcuts for Fast, approval, rejection, fork, microphone and send. Navigate: BLE navigation/dial controls. Configure those bindings in Codex Micro settings after Bluetooth pairing. The helper never sends prompts or approvals. BOOT short-press rotates the display 180 degrees. BOOT long-press starts touch calibration. The current dashboard keeps the screen awake at full brightness.
 

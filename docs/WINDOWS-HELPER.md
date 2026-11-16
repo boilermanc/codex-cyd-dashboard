@@ -74,4 +74,4 @@ python scripts/build_windows_helper.py
 
 The builder runs the packaged help and read-only smoke checks, includes runtime
 license notices, excludes local health data, and writes the ZIP and SHA-256
-checksum under `dist/windows/0.2.3`.
+checksum under `dist/windows/0.2.4`.

@@ -138,6 +138,44 @@ class UsbHelperTests(unittest.TestCase):
         live.receive(event({"type": "patches", "baseRevision": 1, "revision": 3, "patches": []}), 102)
         self.assertNotIn(ID, live.states)
 
+    def test_page_alerts_only_on_entering_working_or_attention(self):
+        live = helper.LiveStates()
+        def snapshot(kind, flags=(), unread=False):
+            return {"method": "thread-stream-state-changed", "sourceClientId": "owner", "params": {
+                "hostId": "local", "conversationId": ID, "change": {
+                    "type": "snapshot", "revision": 1, "conversationState": {
+                        "threadRuntimeStatus": {"type": kind, "activeFlags": list(flags)},
+                        "hasUnreadTurn": unread}}}}
+        self.assertFalse(live.receive(snapshot("idle"), 100))
+        self.assertTrue(live.receive(snapshot("active"), 101))
+        self.assertFalse(live.receive(snapshot("active"), 105))
+        # Even after expiry or a disconnect, rediscovering the same status isn't new work.
+        self.assertFalse(live.receive(snapshot("active"), 120))
+        live.receive({"method": "client-status-changed", "params": {
+            "clientId": "owner", "status": "disconnected"}}, 121)
+        self.assertFalse(live.receive(snapshot("active"), 122))
+        self.assertTrue(live.receive(snapshot("active", ["waitingOnApproval"]), 123))
+        self.assertFalse(live.receive(snapshot("active", ["waitingOnApproval"]), 124))
+        self.assertTrue(live.receive(snapshot("active"), 125))
+        self.assertFalse(live.receive(snapshot("idle", unread=True), 126))
+        self.assertTrue(live.receive(snapshot("active"), 127))
+
+    def test_new_chat_and_patch_can_trigger_page_alert(self):
+        live = helper.LiveStates()
+        event = {"method": "thread-stream-state-changed", "sourceClientId": "owner", "params": {
+            "hostId": "local", "conversationId": ID, "change": {
+                "type": "snapshot", "revision": 1, "conversationState": {
+                    "threadRuntimeStatus": {"type": "active"}}}}}
+        self.assertTrue(live.receive(event, 100))
+        event["params"]["change"] = {"type": "patches", "baseRevision": 1, "revision": 2,
+            "patches": [{"op": "add", "path": ["requests"], "value": [{"method": "approval"}]}]}
+        self.assertTrue(live.receive(event, 101))
+        event["params"]["change"] = {"type": "patches", "baseRevision": 2, "revision": 3,
+            "patches": []}
+        self.assertFalse(live.receive(event, 102))
+        event["params"]["hostId"] = "remote"
+        self.assertFalse(live.receive(event, 103))
+
     def test_taps_remain_bound_to_displayed_uuid(self):
         shown = {ID: 100}
         self.assertEqual(helper.permitted_tap("CYD_OPEN session " + ID, "session", shown, 105), ID)
